@@ -61,16 +61,24 @@ def parse_block(block: str, sort_index: int) -> ParsedMessage | None:
     if not header_match:
         return None
 
-    body_lines = lines[header_line_index + 1 :]
+    original_body_lines = lines[header_line_index + 1 :]
+    body_lines: list[str] = []
     reply_to_name = ""
     reply_to_text = ""
+    reply_found = False
 
-    if body_lines and body_lines[-1].startswith("↳ reply to "):
-        reply_match = REPLY_PATTERN.match(body_lines[-1].strip())
-        if reply_match:
-            reply_to_name = reply_match.group("reply_to_name").strip()
-            reply_to_text = reply_match.group("reply_to_text").strip()
-        body_lines = body_lines[:-1]
+    for line in original_body_lines:
+        stripped = line.strip()
+
+        if not reply_found and stripped.startswith("↳ reply to "):
+            reply_match = REPLY_PATTERN.match(stripped)
+            if reply_match:
+                reply_to_name = reply_match.group("reply_to_name").strip()
+                reply_to_text = reply_match.group("reply_to_text").strip()
+                reply_found = True
+                continue
+
+        body_lines.append(line)
 
     content = "\n".join(body_lines).strip()
     timestamp_display = header_match.group("timestamp")
