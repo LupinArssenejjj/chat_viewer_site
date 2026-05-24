@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kyodo Chat Viewer</title>
+    <link rel="stylesheet" href="/static/styles.css?v=3" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="channel-mark">#</span>
+          <div>
+            <h1 id="chat-title">carregando...</h1>
+            <p id="chat-subtitle">carregando...</p>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <button id="open-filters" class="icon-button" type="button" aria-label="Abrir filtros">
+            filtros
+          </button>
+        </div>
+      </header>
+
+      <section class="meta-strip">
+        <span id="summary-total">0 mensagens</span>
+        <span>•</span>
+        <span id="summary-authors">0 usuários</span>
+        <span>•</span>
+        <span id="summary-range">-</span>
+      </section>
+
+      <section id="context-banner" class="context-banner hidden">
+        <div>
+          <strong>mensagem localizada</strong>
+          <span id="context-text"></span>
+        </div>
+        <button id="back-to-list" class="small-button" type="button">voltar ao início</button>
+      </section>
+
+      <section id="active-filters" class="active-filters"></section>
+
+      <main class="layout">
+        <section class="chat-column">
+          <div id="messages" class="message-list"></div>
+
+          <nav id="pagination" class="pagination">
+            <button id="prev-page" class="small-button" type="button">anterior</button>
+            <span id="page-status">página 1</span>
+            <button id="next-page" class="small-button" type="button">próxima</button>
+          </nav>
+        </section>
+
+        <aside id="results-panel" class="results-panel hidden">
+          <div class="results-head">
+            <div>
+              <h2>resultados</h2>
+              <p id="results-subtitle">0 mensagens</p>
+            </div>
+            <button id="close-results" class="small-button" type="button">fechar</button>
+          </div>
+
+          <div id="results-list" class="results-list"></div>
+
+          <nav id="results-pagination" class="pagination results-pagination hidden">
+            <button id="results-prev" class="small-button" type="button">anterior</button>
+            <span id="results-page-status">página 1</span>
+            <button id="results-next" class="small-button" type="button">próxima</button>
+          </nav>
+        </aside>
+      </main>
+
+      <aside id="filters-panel" class="filters-panel hidden" aria-hidden="true">
+        <div class="filters-head">
+          <h2>filtros</h2>
+          <button id="close-filters" class="icon-button" type="button">x</button>
+        </div>
+
+        <div class="field">
+          <label for="author-input">usuário</label>
+          <input
+            id="author-input"
+            type="text"
+            placeholder="digite ou deixe vazio para ver todos"
+            autocomplete="off"
+          />
+          <input id="selected-author" type="hidden" />
+          <div id="author-suggestions" class="suggestions"></div>
+        </div>
+
+        <div class="field">
+          <label for="text-input">mensagem</label>
+          <input id="text-input" type="text" placeholder="buscar por texto" />
+        </div>
+
+        <div class="filters-actions">
+          <button id="apply-filters" class="primary-button" type="button">aplicar</button>
+          <button id="clear-filters" class="small-button" type="button">limpar</button>
+        </div>
+      </aside>
+
+      <script src="/static/app.js?v=3"></script>
+    </div>
+  </body>
+</html>
