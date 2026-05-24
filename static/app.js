@@ -1,5 +1,3 @@
-# FILE: static/app.js
-/* static/app.js */
 const state = {
   chatPage: 1,
   chatPageSize: 80,
@@ -185,6 +183,19 @@ function syncDateInputLimits() {
   if (elements.endDateInput) {
     elements.endDateInput.min = state.meta.minDate || "";
     elements.endDateInput.max = state.meta.maxDate || "";
+  }
+}
+
+function preventManualDateTyping() {
+  for (const input of [elements.startDateInput, elements.endDateInput]) {
+    if (!input) continue;
+
+    input.addEventListener("keydown", (event) => {
+      const allowedKeys = new Set(["Tab", "Escape"]);
+      if (!allowedKeys.has(event.key)) {
+        event.preventDefault();
+      }
+    });
   }
 }
 
@@ -773,6 +784,7 @@ function bindEvents() {
 
 async function bootstrap() {
   bindEvents();
+  preventManualDateTyping();
   await loadMeta();
   await loadChat();
   await loadResults();
