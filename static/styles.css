@@ -564,4 +564,15 @@ h1 {
     width: auto;
     max-height: min(78vh, 620px);
   }
+
+  .date-range-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 700px) {
+  .date-range-grid {
+    grid-template-columns: 1fr;
+  }
 }

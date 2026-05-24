@@ -1,6 +1,8 @@
+# FILE: app.py
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -35,6 +37,11 @@ def get_connection() -> sqlite3.Connection:
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return {key: row[key] for key in row.keys()}
+
+
+def normalize_date_input(value: str) -> str:
+    parsed = datetime.strptime(value, "%Y-%m-%d")
+    return parsed.date().isoformat()
 
 
 @app.get("/")
@@ -104,6 +111,8 @@ def authors(
 def messages(
     author: str = Query(default="", max_length=500),
     text: str = Query(default="", max_length=500),
+    start_date: str = Query(default="", max_length=10),
+    end_date: str = Query(default="", max_length=10),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
@@ -112,6 +121,17 @@ def messages(
 
     author = author.strip()
     text = text.strip().lower()
+    start_date = start_date.strip()
+    end_date = end_date.strip()
+
+    if start_date:
+        start_date = normalize_date_input(start_date)
+
+    if end_date:
+        end_date = normalize_date_input(end_date)
+
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
 
     if author:
         conditions.append("author_name = ?")
@@ -129,6 +149,14 @@ def messages(
         )
         like_value = f"%{text}%"
         params.extend([like_value, like_value, like_value])
+
+    if start_date:
+        conditions.append("date(timestamp_iso) >= date(?)")
+        params.append(start_date)
+
+    if end_date:
+        conditions.append("date(timestamp_iso) <= date(?)")
+        params.append(end_date)
 
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     offset = (page - 1) * page_size
@@ -170,6 +198,8 @@ def messages(
         "filters": {
             "author": author,
             "text": text,
+            "start_date": start_date,
+            "end_date": end_date,
         },
     }
 

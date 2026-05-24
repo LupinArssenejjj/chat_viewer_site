@@ -1,3 +1,4 @@
+# FILE: static/app.js
 /* static/app.js */
 const state = {
   chatPage: 1,
@@ -10,12 +11,16 @@ const state = {
 
   selectedAuthor: "",
   textQuery: "",
+  startDate: "",
+  endDate: "",
   mode: "list",
 
   meta: {
     totalText: "0 mensagens",
     authorsText: "0 usuários",
     rangeText: "-",
+    minDate: "",
+    maxDate: "",
   },
 };
 
@@ -34,6 +39,8 @@ const elements = {
   selectedAuthor: document.getElementById("selected-author"),
   authorSuggestions: document.getElementById("author-suggestions"),
   textInput: document.getElementById("text-input"),
+  startDateInput: document.getElementById("start-date-input"),
+  endDateInput: document.getElementById("end-date-input"),
 
   applyFilters: document.getElementById("apply-filters"),
   clearFilters: document.getElementById("clear-filters"),
@@ -79,6 +86,13 @@ function formatPeriod(start, end) {
   return `${startText} até ${endText}`;
 }
 
+function formatDateOnly(dateValue) {
+  if (!dateValue) return "";
+  const [year, month, day] = String(dateValue).split("-");
+  if (!year || !month || !day) return dateValue;
+  return `${day}/${month}/${year}`;
+}
+
 function normalizeReplyValue(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -94,7 +108,7 @@ function hasVisibleReply(item) {
 }
 
 function hasActiveFilters() {
-  return Boolean(state.selectedAuthor || state.textQuery);
+  return Boolean(state.selectedAuthor || state.textQuery || state.startDate || state.endDate);
 }
 
 function truncate(value, maxLength = 120) {
@@ -157,14 +171,34 @@ function resetAuthorPicker() {
   if (elements.authorSuggestions) elements.authorSuggestions.innerHTML = "";
 }
 
+function resetDateInputs() {
+  if (elements.startDateInput) elements.startDateInput.value = "";
+  if (elements.endDateInput) elements.endDateInput.value = "";
+}
+
+function syncDateInputLimits() {
+  if (elements.startDateInput) {
+    elements.startDateInput.min = state.meta.minDate || "";
+    elements.startDateInput.max = state.meta.maxDate || "";
+  }
+
+  if (elements.endDateInput) {
+    elements.endDateInput.min = state.meta.minDate || "";
+    elements.endDateInput.max = state.meta.maxDate || "";
+  }
+}
+
 function openFilters() {
   if (!elements.filtersPanel) return;
 
   resetAuthorPicker();
+  resetDateInputs();
 
   if (elements.textInput) {
     elements.textInput.value = "";
   }
+
+  syncDateInputLimits();
 
   elements.filtersPanel.classList.remove("hidden");
   elements.filtersPanel.setAttribute("aria-hidden", "false");
@@ -198,6 +232,12 @@ function renderActiveFilters() {
 
   if (state.textQuery) {
     chips.push(`<span class="filter-chip">mensagem: ${escapeHtml(state.textQuery)}</span>`);
+  }
+
+  if (state.startDate || state.endDate) {
+    const startLabel = state.startDate ? formatDateOnly(state.startDate) : state.meta.minDate ? formatDateOnly(state.meta.minDate) : "-";
+    const endLabel = state.endDate ? formatDateOnly(state.endDate) : state.meta.maxDate ? formatDateOnly(state.meta.maxDate) : "-";
+    chips.push(`<span class="filter-chip">data: ${escapeHtml(startLabel)} até ${escapeHtml(endLabel)}</span>`);
   }
 
   elements.activeFilters.innerHTML = chips.join("");
@@ -334,7 +374,7 @@ function renderResults(items, total, page, totalPages) {
     elements.resultsNext.disabled = true;
     elements.resultsList.innerHTML = `
       <div class="empty-state">
-        escolha um usuário ou digite um texto para ver os resultados aqui.
+        escolha um usuário, texto ou intervalo de data para ver os resultados aqui.
       </div>
     `;
     closeResultsPanelUi();
@@ -396,6 +436,8 @@ function bindMessageActions() {
       state.selectedAuthor = author;
       state.resultsPage = 1;
       state.textQuery = "";
+      state.startDate = "";
+      state.endDate = "";
       renderActiveFilters();
       await loadResults();
       scrollResultsTop();
@@ -451,7 +493,10 @@ async function loadMeta() {
   state.meta.totalText = `${Number(data.total_messages || 0).toLocaleString("pt-BR")} mensagens`;
   state.meta.authorsText = `${Number(data.total_authors || 0).toLocaleString("pt-BR")} usuários`;
   state.meta.rangeText = formatPeriod(data.first_message_at, data.last_message_at);
+  state.meta.minDate = String(data.first_message_at || "").slice(0, 10);
+  state.meta.maxDate = String(data.last_message_at || "").slice(0, 10);
 
+  syncDateInputLimits();
   restoreMetaSummary();
 }
 
@@ -481,6 +526,8 @@ async function loadResults() {
     page_size: state.resultsPageSize,
     author: state.selectedAuthor,
     text: state.textQuery,
+    start_date: state.startDate,
+    end_date: state.endDate,
   });
 
   const data = await fetchJson(`/api/messages?${query}`);
@@ -554,11 +601,15 @@ async function loadAuthorSuggestions(query = "") {
 function clearFiltersState() {
   state.selectedAuthor = "";
   state.textQuery = "";
+  state.startDate = "";
+  state.endDate = "";
   state.resultsPage = 1;
 
   if (elements.authorInput) elements.authorInput.value = "";
   if (elements.selectedAuthor) elements.selectedAuthor.value = "";
   if (elements.textInput) elements.textInput.value = "";
+  if (elements.startDateInput) elements.startDateInput.value = "";
+  if (elements.endDateInput) elements.endDateInput.value = "";
 }
 
 async function clearFilterSession() {
@@ -570,6 +621,20 @@ async function clearFilterSession() {
   state.chatPage = 1;
   await loadChat();
   scrollPageTop();
+}
+
+function normalizePendingDateRange() {
+  let startDate = elements.startDateInput?.value || "";
+  let endDate = elements.endDateInput?.value || "";
+
+  if (startDate && endDate && startDate > endDate) {
+    [startDate, endDate] = [endDate, startDate];
+  }
+
+  if (elements.startDateInput) elements.startDateInput.value = startDate;
+  if (elements.endDateInput) elements.endDateInput.value = endDate;
+
+  return { startDate, endDate };
 }
 
 function bindEvents() {
@@ -605,14 +670,19 @@ function bindEvents() {
     elements.textInput.addEventListener("keydown", async (event) => {
       if (event.key !== "Enter") return;
 
+      const pendingRange = normalizePendingDateRange();
+
       state.selectedAuthor = elements.selectedAuthor?.value || elements.authorInput?.value.trim() || "";
       state.textQuery = elements.textInput.value.trim();
+      state.startDate = pendingRange.startDate;
+      state.endDate = pendingRange.endDate;
       state.resultsPage = 1;
 
       renderActiveFilters();
       await loadResults();
 
       resetAuthorPicker();
+      resetDateInputs();
       closeFiltersUi();
       scrollResultsTop();
     });
@@ -620,14 +690,19 @@ function bindEvents() {
 
   if (elements.applyFilters) {
     elements.applyFilters.addEventListener("click", async () => {
+      const pendingRange = normalizePendingDateRange();
+
       state.selectedAuthor = elements.selectedAuthor?.value || elements.authorInput?.value.trim() || "";
       state.textQuery = elements.textInput?.value.trim() || "";
+      state.startDate = pendingRange.startDate;
+      state.endDate = pendingRange.endDate;
       state.resultsPage = 1;
 
       renderActiveFilters();
       await loadResults();
 
       resetAuthorPicker();
+      resetDateInputs();
       closeFiltersUi();
       scrollResultsTop();
     });
