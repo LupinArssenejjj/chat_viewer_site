@@ -1,14 +1,16 @@
+/* static/app.js */
 const state = {
-  page: 1,
-  pageSize: 80,
-  totalPages: 1,
+  chatPage: 1,
+  chatPageSize: 80,
+  chatTotalPages: 1,
+
+  resultsPage: 1,
+  resultsPageSize: 25,
+  resultsTotalPages: 1,
+
   selectedAuthor: "",
   textQuery: "",
-  contextSortIndex: null,
-  resultsPage: 1,
-  resultsPageSize: 50,
-  resultsTotalPages: 1,
-  activeResultSortIndex: null,
+  mode: "list",
 };
 
 const elements = {
@@ -17,33 +19,38 @@ const elements = {
   summaryTotal: document.getElementById("summary-total"),
   summaryAuthors: document.getElementById("summary-authors"),
   summaryRange: document.getElementById("summary-range"),
-  activeFilters: document.getElementById("active-filters"),
-  messages: document.getElementById("messages"),
-  pagination: document.getElementById("pagination"),
-  pageStatus: document.getElementById("page-status"),
-  prevPage: document.getElementById("prev-page"),
-  nextPage: document.getElementById("next-page"),
+
   openFilters: document.getElementById("open-filters"),
   closeFilters: document.getElementById("close-filters"),
   filtersPanel: document.getElementById("filters-panel"),
+
   authorInput: document.getElementById("author-input"),
   selectedAuthor: document.getElementById("selected-author"),
   authorSuggestions: document.getElementById("author-suggestions"),
   textInput: document.getElementById("text-input"),
+
   applyFilters: document.getElementById("apply-filters"),
   clearFilters: document.getElementById("clear-filters"),
+
+  activeFilters: document.getElementById("active-filters"),
+
+  messages: document.getElementById("messages"),
+  pageStatus: document.getElementById("page-status"),
+  prevPage: document.getElementById("prev-page"),
+  nextPage: document.getElementById("next-page"),
+  pagination: document.getElementById("pagination"),
+
   contextBanner: document.getElementById("context-banner"),
   contextText: document.getElementById("context-text"),
   backToList: document.getElementById("back-to-list"),
+
   resultsPanel: document.getElementById("results-panel"),
+  resultsCount: document.getElementById("results-count"),
   resultsList: document.getElementById("results-list"),
-  resultsSubtitle: document.getElementById("results-subtitle"),
-  resultsPagination: document.getElementById("results-pagination"),
   resultsPrev: document.getElementById("results-prev"),
   resultsNext: document.getElementById("results-next"),
   resultsPageStatus: document.getElementById("results-page-status"),
   closeResults: document.getElementById("close-results"),
-  layout: document.querySelector(".layout"),
 };
 
 function escapeHtml(value) {
@@ -80,70 +87,64 @@ function hasVisibleReply(item) {
   return !invalidNames.has(replyName) && !invalidTexts.has(replyText);
 }
 
-function truncate(value, length = 160) {
-  const clean = String(value || "").replace(/\s+/g, " ").trim();
-  if (!clean) return "[sem conteúdo]";
-  return clean.length > length ? `${clean.slice(0, length - 1)}…` : clean;
+function hasActiveFilters() {
+  return Boolean(state.selectedAuthor || state.textQuery);
 }
 
-function extractUrls(text) {
-  return String(text || "").match(/https?:\/\/[^\s<>"')]+/g) || [];
+function truncate(value, maxLength = 120) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trim()}...`;
 }
 
-function isImageUrl(url) {
-  return /ams3-cdn\.kyodo\.app/i.test(url) && /\.(jpeg|jpg|png|gif|webp)(\?.*)?$/i.test(url);
+function buildQuery(params) {
+  const search = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      search.set(key, String(value));
+    }
+  });
+
+  return search.toString();
 }
 
-function isVideoUrl(url) {
-  return /ams3-cdn\.kyodo\.app/i.test(url) && /\.(mp4|webm|mov)(\?.*)?$/i.test(url);
-}
+async function fetchJson(url) {
+  const response = await fetch(url);
 
-function renderContentText(text) {
-  const urls = extractUrls(text);
-  let html = escapeHtml(text || "[sem conteúdo]");
-
-  for (const url of urls) {
-    const safeUrl = escapeHtml(url);
-    html = html.replaceAll(
-      safeUrl,
-      `<a class="media-link" href="${safeUrl}" target="_blank" rel="noreferrer">${safeUrl}</a>`
-    );
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`HTTP ${response.status} - ${body}`);
   }
 
-  return html;
+  return response.json();
 }
 
-function renderMediaEmbeds(text) {
-  const urls = extractUrls(text);
-  const media = [];
+function openFilters() {
+  if (!elements.filtersPanel) return;
+  elements.filtersPanel.classList.remove("hidden");
+  elements.filtersPanel.setAttribute("aria-hidden", "false");
+}
 
-  for (const url of urls) {
-    const safeUrl = escapeHtml(url);
+function closeFilters() {
+  if (!elements.filtersPanel) return;
+  elements.filtersPanel.classList.add("hidden");
+  elements.filtersPanel.setAttribute("aria-hidden", "true");
+}
 
-    if (isImageUrl(url)) {
-      media.push(`
-        <a class="media-card" href="${safeUrl}" target="_blank" rel="noreferrer">
-          <img src="${safeUrl}" alt="imagem enviada no chat" loading="lazy" />
-        </a>
-      `);
-      continue;
-    }
+function openResults() {
+  if (!elements.resultsPanel) return;
+  elements.resultsPanel.classList.remove("hidden");
+}
 
-    if (isVideoUrl(url)) {
-      media.push(`
-        <div class="media-card">
-          <video controls preload="metadata">
-            <source src="${safeUrl}" />
-          </video>
-        </div>
-      `);
-    }
-  }
-
-  return media.length ? `<div class="message-media">${media.join("")}</div>` : "";
+function closeResultsPanel() {
+  if (!elements.resultsPanel) return;
+  elements.resultsPanel.classList.add("hidden");
 }
 
 function renderActiveFilters() {
+  if (!elements.activeFilters) return;
+
   const chips = [];
 
   if (state.selectedAuthor) {
@@ -157,7 +158,61 @@ function renderActiveFilters() {
   elements.activeFilters.innerHTML = chips.join("");
 }
 
+function extractMediaUrls(content) {
+  const urls = String(content || "").match(/https?:\/\/[^\s]+/g) || [];
+
+  return urls.filter((url) => {
+    const lower = url.toLowerCase();
+    if (!lower.includes("ams3-cdn.kyodo.app/chat/icon/")) return false;
+    return (
+      lower.includes(".jpeg") ||
+      lower.includes(".jpg") ||
+      lower.includes(".png") ||
+      lower.includes(".webp") ||
+      lower.includes(".gif") ||
+      lower.includes(".mp4") ||
+      lower.includes(".webm")
+    );
+  });
+}
+
+function renderMediaPreview(content) {
+  const mediaUrls = extractMediaUrls(content);
+
+  if (!mediaUrls.length) return "";
+
+  return mediaUrls
+    .map((url) => {
+      const safeUrl = escapeHtml(url);
+      const lower = url.toLowerCase();
+
+      if (lower.includes(".mp4") || lower.includes(".webm")) {
+        return `
+          <div class="media-preview">
+            <video controls preload="metadata" style="max-width: 100%; border-radius: 10px; margin-top: 8px;">
+              <source src="${safeUrl}" />
+            </video>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="media-preview">
+          <img
+            src="${safeUrl}"
+            alt="mídia da mensagem"
+            loading="lazy"
+            style="max-width: 100%; border-radius: 10px; margin-top: 8px; display: block;"
+          />
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function renderMessages(items, focusSortIndex = null) {
+  if (!elements.messages) return;
+
   if (!items.length) {
     elements.messages.innerHTML = `<div class="empty-state">nenhuma mensagem encontrada.</div>`;
     return;
@@ -165,17 +220,25 @@ function renderMessages(items, focusSortIndex = null) {
 
   elements.messages.innerHTML = items
     .map((item) => {
-      const replyBlock = hasVisibleReply(item)
+      const showReply = hasVisibleReply(item);
+      const canJump = showReply && Number.isInteger(item.reply_to_sort_index);
+      const mediaPreview = renderMediaPreview(item.content || "");
+
+      const replyBlock = showReply
         ? `
-          <div class="reply-preview">
+          <button
+            type="button"
+            class="reply-preview"
+            ${canJump ? `data-jump="${item.reply_to_sort_index}"` : "disabled"}
+            title="${canJump ? "ir para a mensagem original" : "mensagem original não encontrada"}"
+          >
             <span class="reply-label">Respondendo à:</span>
             <span class="reply-author">${escapeHtml(item.reply_to_name)}</span>
             <span class="reply-text">${escapeHtml(item.reply_to_text)}</span>
-          </div>
+          </button>
         `
         : "";
 
-      const mediaBlock = renderMediaEmbeds(item.content);
       const targetClass = focusSortIndex === item.sort_index ? "is-target" : "";
 
       return `
@@ -183,17 +246,21 @@ function renderMessages(items, focusSortIndex = null) {
           <div class="avatar">${escapeHtml(firstLetter(item.author_name))}</div>
           <div class="message-main">
             <div class="message-head">
-              <span class="author-name">${escapeHtml(item.author_name)}</span>
+              <button type="button" class="author-name-button" data-author-filter="${escapeHtml(item.author_name)}">
+                ${escapeHtml(item.author_name)}
+              </button>
               <span class="timestamp">${escapeHtml(item.timestamp_display)}</span>
             </div>
             ${replyBlock}
-            <div class="message-content">${renderContentText(item.content)}</div>
-            ${mediaBlock}
+            <div class="message-content">${escapeHtml(item.content || "[sem conteúdo]")}</div>
+            ${mediaPreview}
           </div>
         </article>
       `;
     })
     .join("");
+
+  bindMessageActions();
 
   if (focusSortIndex) {
     const target = document.getElementById(`msg-${focusSortIndex}`);
@@ -203,180 +270,210 @@ function renderMessages(items, focusSortIndex = null) {
   }
 }
 
-function renderSearchResults(items) {
+function renderResults(items, total, page, totalPages) {
+  if (
+    !elements.resultsList ||
+    !elements.resultsCount ||
+    !elements.resultsPageStatus ||
+    !elements.resultsPrev ||
+    !elements.resultsNext
+  ) {
+    return;
+  }
+
+  if (!hasActiveFilters()) {
+    elements.resultsCount.textContent = "0 mensagens";
+    elements.resultsPageStatus.textContent = "página 1 de 1";
+    elements.resultsPrev.disabled = true;
+    elements.resultsNext.disabled = true;
+    elements.resultsList.innerHTML = `
+      <div class="empty-state">
+        escolha um usuário ou digite um texto para ver os resultados aqui.
+      </div>
+    `;
+    closeResultsPanel();
+    return;
+  }
+
+  elements.resultsCount.textContent = `${Number(total || 0).toLocaleString("pt-BR")} mensagens`;
+  elements.resultsPageStatus.textContent = `página ${page} de ${totalPages}`;
+  elements.resultsPrev.disabled = page <= 1;
+  elements.resultsNext.disabled = page >= totalPages;
+
   if (!items.length) {
-    elements.resultsList.innerHTML = `<div class="empty-state">nenhuma mensagem encontrada.</div>`;
+    elements.resultsList.innerHTML = `
+      <div class="empty-state">
+        nenhuma mensagem encontrada.
+      </div>
+    `;
+    openResults();
     return;
   }
 
   elements.resultsList.innerHTML = items
-    .map((item) => {
-      const activeClass = state.activeResultSortIndex === item.sort_index ? "active" : "";
-      const reply = hasVisibleReply(item)
-        ? `<span class="result-reply">Respondendo à ${escapeHtml(item.reply_to_name)}</span>`
-        : "";
-
-      return `
-        <button type="button" class="result-item ${activeClass}" data-result-sort-index="${item.sort_index}">
-          <div class="result-meta">
-            <span class="result-author">${escapeHtml(item.author_name)}</span>
-            <span class="result-time">${escapeHtml(item.timestamp_display)}</span>
+    .map(
+      (item) => `
+        <button type="button" class="result-item" data-result-jump="${item.sort_index}">
+          <div class="result-item-head">
+            <span class="result-item-author">${escapeHtml(item.author_name)}</span>
+            <span class="result-item-time">${escapeHtml(item.timestamp_display)}</span>
           </div>
-          <div class="result-snippet">${escapeHtml(truncate(item.content))}</div>
-          ${reply}
+          <div class="result-item-text">${escapeHtml(truncate(item.content || "[sem conteúdo]"))}</div>
         </button>
-      `;
-    })
+      `
+    )
     .join("");
 
-  for (const button of elements.resultsList.querySelectorAll("[data-result-sort-index]")) {
+  for (const button of elements.resultsList.querySelectorAll("[data-result-jump]")) {
     button.addEventListener("click", async () => {
-      const sortIndex = Number(button.getAttribute("data-result-sort-index"));
+      const sortIndex = Number(button.getAttribute("data-result-jump"));
       if (!Number.isInteger(sortIndex) || sortIndex <= 0) return;
-      state.activeResultSortIndex = sortIndex;
       await loadContext(sortIndex);
-      highlightActiveResult();
+    });
+  }
+
+  openResults();
+}
+
+function bindMessageActions() {
+  for (const button of document.querySelectorAll("[data-jump]")) {
+    button.addEventListener("click", async () => {
+      const sortIndex = Number(button.getAttribute("data-jump"));
+      if (!Number.isInteger(sortIndex) || sortIndex <= 0) return;
+      await loadContext(sortIndex);
+    });
+  }
+
+  for (const button of document.querySelectorAll("[data-author-filter]")) {
+    button.addEventListener("click", async () => {
+      const author = button.getAttribute("data-author-filter") || "";
+      if (elements.authorInput) elements.authorInput.value = author;
+      if (elements.selectedAuthor) elements.selectedAuthor.value = author;
+      state.selectedAuthor = author;
+      state.resultsPage = 1;
+      renderActiveFilters();
+      await loadResults();
     });
   }
 }
 
-function highlightActiveResult() {
-  for (const item of elements.resultsList.querySelectorAll(".result-item")) {
-    const sortIndex = Number(item.getAttribute("data-result-sort-index"));
-    item.classList.toggle("active", sortIndex === state.activeResultSortIndex);
+function updateChatPagination(page, totalPages) {
+  state.chatPage = page;
+  state.chatTotalPages = totalPages;
+
+  if (elements.pageStatus) {
+    elements.pageStatus.textContent = `página ${page} de ${totalPages}`;
+  }
+
+  if (elements.prevPage) {
+    elements.prevPage.disabled = page <= 1;
+  }
+
+  if (elements.nextPage) {
+    elements.nextPage.disabled = page >= totalPages;
   }
 }
 
-function updatePagination(page, totalPages) {
-  state.page = page;
-  state.totalPages = totalPages;
-  elements.pageStatus.textContent = `página ${page} de ${totalPages}`;
-  elements.prevPage.disabled = page <= 1;
-  elements.nextPage.disabled = page >= totalPages;
+function setListMode() {
+  state.mode = "list";
+  if (elements.contextBanner) elements.contextBanner.classList.add("hidden");
+  if (elements.pagination) elements.pagination.classList.remove("hidden");
 }
 
-function updateResultsPagination(page, totalPages) {
-  state.resultsPage = page;
-  state.resultsTotalPages = totalPages;
-  elements.resultsPageStatus.textContent = `página ${page} de ${totalPages}`;
-  elements.resultsPrev.disabled = page <= 1;
-  elements.resultsNext.disabled = page >= totalPages;
-  elements.resultsPagination.classList.toggle("hidden", totalPages <= 1);
-}
-
-function showResultsPanel() {
-  elements.resultsPanel.classList.remove("hidden");
-  elements.layout.classList.add("has-results");
-}
-
-function hideResultsPanel() {
-  elements.resultsPanel.classList.add("hidden");
-  elements.layout.classList.remove("has-results");
-}
-
-function showListMode() {
-  state.contextSortIndex = null;
-  elements.contextBanner.classList.add("hidden");
-  elements.pagination.classList.remove("hidden");
-}
-
-function showContextMode(sortIndex) {
-  state.contextSortIndex = sortIndex;
-  elements.contextBanner.classList.remove("hidden");
-  elements.pagination.classList.add("hidden");
-  elements.contextText.textContent = `mostrando a região da mensagem #${sortIndex}`;
-}
-
-function openFilters() {
-  elements.filtersPanel.classList.remove("hidden");
-  elements.filtersPanel.setAttribute("aria-hidden", "false");
-  loadAuthorSuggestions(elements.authorInput.value.trim());
-}
-
-function closeFilters() {
-  elements.filtersPanel.classList.add("hidden");
-  elements.filtersPanel.setAttribute("aria-hidden", "true");
+function setContextMode(targetSortIndex) {
+  state.mode = "context";
+  if (elements.contextBanner) elements.contextBanner.classList.remove("hidden");
+  if (elements.pagination) elements.pagination.classList.add("hidden");
+  if (elements.contextText) {
+    elements.contextText.textContent = `mostrando o contexto da mensagem #${targetSortIndex}`;
+  }
 }
 
 async function loadMeta() {
-  const response = await fetch("/api/meta");
-  const data = await response.json();
+  const data = await fetchJson("/api/meta");
 
-  elements.chatTitle.textContent = data.chat_name || "chat";
-  elements.chatSubtitle.textContent = data.circle_name
-    ? `${data.circle_name} • exportado em ${data.exported_at || "-"}`
-    : `exportado em ${data.exported_at || "-"}`;
+  if (elements.chatTitle) {
+    elements.chatTitle.textContent = data.chat_name || "chat";
+  }
 
-  elements.summaryTotal.textContent = `${Number(data.total_messages || 0).toLocaleString("pt-BR")} mensagens`;
-  elements.summaryAuthors.textContent = `${Number(data.total_authors || 0).toLocaleString("pt-BR")} usuários`;
-  elements.summaryRange.textContent = formatPeriod(data.first_message_at, data.last_message_at);
+  if (elements.chatSubtitle) {
+    elements.chatSubtitle.textContent = data.circle_name
+      ? `${data.circle_name} • exportado em ${data.exported_at || "-"}`
+      : `exportado em ${data.exported_at || "-"}`;
+  }
+
+  if (elements.summaryTotal) {
+    elements.summaryTotal.textContent = `${Number(data.total_messages || 0).toLocaleString("pt-BR")} mensagens`;
+  }
+
+  if (elements.summaryAuthors) {
+    elements.summaryAuthors.textContent = `${Number(data.total_authors || 0).toLocaleString("pt-BR")} usuários`;
+  }
+
+  if (elements.summaryRange) {
+    elements.summaryRange.textContent = formatPeriod(data.first_message_at, data.last_message_at);
+  }
 }
 
-async function loadMessages() {
-  showListMode();
+async function loadChat() {
+  setListMode();
 
-  const params = new URLSearchParams({
-    page: String(state.page),
-    page_size: String(state.pageSize),
+  const query = buildQuery({
+    page: state.chatPage,
+    page_size: state.chatPageSize,
   });
 
-  const response = await fetch(`/api/messages?${params.toString()}`);
-  const data = await response.json();
-
+  const data = await fetchJson(`/api/messages?${query}`);
   renderMessages(data.items || []);
-  updatePagination(data.page, data.total_pages);
+  updateChatPagination(data.page || 1, data.total_pages || 1);
 }
 
-async function loadContext(sortIndex) {
-  const params = new URLSearchParams({
-    sort_index: String(sortIndex),
-    window: "20",
+async function loadResults() {
+  const query = buildQuery({
+    page: state.resultsPage,
+    page_size: state.resultsPageSize,
+    author: state.selectedAuthor,
+    text: state.textQuery,
   });
 
-  const response = await fetch(`/api/context?${params.toString()}`);
-  const data = await response.json();
-
-  showContextMode(data.target_sort_index);
-  renderMessages(data.items || [], data.target_sort_index);
-}
-
-async function loadSearchResults() {
-  const hasFilters = Boolean(state.selectedAuthor || state.textQuery);
-
-  renderActiveFilters();
-
-  if (!hasFilters) {
-    hideResultsPanel();
-    state.activeResultSortIndex = null;
+  if (!hasActiveFilters()) {
+    renderResults([], 0, 1, 1);
     return;
   }
 
-  const params = new URLSearchParams({
-    page: String(state.resultsPage),
-    page_size: String(state.resultsPageSize),
+  const data = await fetchJson(`/api/messages?${query}`);
+  state.resultsTotalPages = data.total_pages || 1;
+
+  renderResults(
+    data.items || [],
+    data.total || 0,
+    data.page || 1,
+    data.total_pages || 1
+  );
+}
+
+async function loadContext(sortIndex) {
+  const query = buildQuery({
+    sort_index: sortIndex,
+    window: 20,
   });
 
-  if (state.selectedAuthor) {
-    params.set("author", state.selectedAuthor);
+  const data = await fetchJson(`/api/context?${query}`);
+
+  setContextMode(data.target_sort_index);
+  renderMessages(data.items || [], data.target_sort_index);
+
+  const target = data.target || {};
+  if (elements.summaryTotal && target.author_name) {
+    elements.summaryTotal.textContent = `contexto • ${target.author_name}`;
   }
-
-  if (state.textQuery) {
-    params.set("text", state.textQuery);
-  }
-
-  const response = await fetch(`/api/search?${params.toString()}`);
-  const data = await response.json();
-
-  showResultsPanel();
-  elements.resultsSubtitle.textContent = `${Number(data.total || 0).toLocaleString("pt-BR")} mensagens`;
-  renderSearchResults(data.items || []);
-  updateResultsPagination(data.page, data.total_pages);
 }
 
 async function loadAuthorSuggestions(query = "") {
-  const params = new URLSearchParams({ query, limit: "80" });
-  const response = await fetch(`/api/authors?${params.toString()}`);
-  const data = await response.json();
+  if (!elements.authorSuggestions) return;
+
+  const params = buildQuery({ query, limit: 80 });
+  const data = await fetchJson(`/api/authors?${params}`);
   const items = data.items || [];
 
   if (!items.length) {
@@ -400,95 +497,134 @@ async function loadAuthorSuggestions(query = "") {
     .join("");
 
   for (const button of elements.authorSuggestions.querySelectorAll(".suggestion-item")) {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const author = button.getAttribute("data-author") || "";
-      elements.authorInput.value = author;
-      elements.selectedAuthor.value = author;
+      if (elements.authorInput) elements.authorInput.value = author;
+      if (elements.selectedAuthor) elements.selectedAuthor.value = author;
       state.selectedAuthor = author;
-      loadAuthorSuggestions(author);
+      state.resultsPage = 1;
+      renderActiveFilters();
+      await loadResults();
     });
   }
 }
 
+function clearFiltersState() {
+  state.selectedAuthor = "";
+  state.textQuery = "";
+  state.resultsPage = 1;
+
+  if (elements.authorInput) elements.authorInput.value = "";
+  if (elements.selectedAuthor) elements.selectedAuthor.value = "";
+  if (elements.textInput) elements.textInput.value = "";
+}
+
 function bindEvents() {
-  elements.openFilters.addEventListener("click", openFilters);
-  elements.closeFilters.addEventListener("click", closeFilters);
+  if (elements.openFilters) {
+    elements.openFilters.addEventListener("click", async () => {
+      openFilters();
+      await loadAuthorSuggestions(elements.authorInput?.value.trim() || "");
+    });
+  }
 
-  elements.authorInput.addEventListener("focus", () => {
-    loadAuthorSuggestions(elements.authorInput.value.trim());
-  });
+  if (elements.closeFilters) {
+    elements.closeFilters.addEventListener("click", closeFilters);
+  }
 
-  elements.authorInput.addEventListener("input", (event) => {
-    const value = event.target.value.trim();
-    elements.selectedAuthor.value = "";
-    state.selectedAuthor = "";
-    loadAuthorSuggestions(value);
-  });
+  if (elements.authorInput) {
+    elements.authorInput.addEventListener("focus", async () => {
+      await loadAuthorSuggestions(elements.authorInput.value.trim());
+    });
 
-  elements.applyFilters.addEventListener("click", async () => {
-    state.selectedAuthor = elements.selectedAuthor.value || elements.authorInput.value.trim();
-    state.textQuery = elements.textInput.value.trim();
-    state.resultsPage = 1;
-    closeFilters();
-    await loadSearchResults();
-  });
+    elements.authorInput.addEventListener("input", async (event) => {
+      const value = event.target.value.trim();
+      if (elements.selectedAuthor) elements.selectedAuthor.value = "";
+      state.selectedAuthor = "";
+      await loadAuthorSuggestions(value);
+    });
+  }
 
-  elements.clearFilters.addEventListener("click", async () => {
-    state.selectedAuthor = "";
-    state.textQuery = "";
-    state.resultsPage = 1;
-    state.activeResultSortIndex = null;
-    elements.authorInput.value = "";
-    elements.selectedAuthor.value = "";
-    elements.textInput.value = "";
-    await loadAuthorSuggestions("");
-    await loadSearchResults();
-  });
+  if (elements.textInput) {
+    elements.textInput.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter") return;
 
-  elements.prevPage.addEventListener("click", async () => {
-    if (state.page <= 1) return;
-    state.page -= 1;
-    await loadMessages();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+      state.selectedAuthor = elements.selectedAuthor?.value || elements.authorInput?.value.trim() || "";
+      state.textQuery = elements.textInput.value.trim();
+      state.resultsPage = 1;
 
-  elements.nextPage.addEventListener("click", async () => {
-    if (state.page >= state.totalPages) return;
-    state.page += 1;
-    await loadMessages();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+      renderActiveFilters();
+      await loadResults();
+      closeFilters();
+    });
+  }
 
-  elements.resultsPrev.addEventListener("click", async () => {
-    if (state.resultsPage <= 1) return;
-    state.resultsPage -= 1;
-    await loadSearchResults();
-  });
+  if (elements.applyFilters) {
+    elements.applyFilters.addEventListener("click", async () => {
+      state.selectedAuthor = elements.selectedAuthor?.value || elements.authorInput?.value.trim() || "";
+      state.textQuery = elements.textInput?.value.trim() || "";
+      state.resultsPage = 1;
 
-  elements.resultsNext.addEventListener("click", async () => {
-    if (state.resultsPage >= state.resultsTotalPages) return;
-    state.resultsPage += 1;
-    await loadSearchResults();
-  });
+      renderActiveFilters();
+      await loadResults();
+      closeFilters();
+    });
+  }
 
-  elements.backToList.addEventListener("click", async () => {
-    state.activeResultSortIndex = null;
-    await loadMessages();
-    highlightActiveResult();
-  });
+  if (elements.clearFilters) {
+    elements.clearFilters.addEventListener("click", async () => {
+      clearFiltersState();
+      renderActiveFilters();
+      renderResults([], 0, 1, 1);
+      await loadAuthorSuggestions("");
+    });
+  }
 
-  elements.closeResults.addEventListener("click", () => {
-    state.selectedAuthor = "";
-    state.textQuery = "";
-    state.resultsPage = 1;
-    state.activeResultSortIndex = null;
-    elements.authorInput.value = "";
-    elements.selectedAuthor.value = "";
-    elements.textInput.value = "";
-    renderActiveFilters();
-    hideResultsPanel();
-    highlightActiveResult();
-  });
+  if (elements.prevPage) {
+    elements.prevPage.addEventListener("click", async () => {
+      if (state.chatPage <= 1) return;
+      state.chatPage -= 1;
+      await loadChat();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  if (elements.nextPage) {
+    elements.nextPage.addEventListener("click", async () => {
+      if (state.chatPage >= state.chatTotalPages) return;
+      state.chatPage += 1;
+      await loadChat();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  if (elements.resultsPrev) {
+    elements.resultsPrev.addEventListener("click", async () => {
+      if (state.resultsPage <= 1) return;
+      state.resultsPage -= 1;
+      await loadResults();
+    });
+  }
+
+  if (elements.resultsNext) {
+    elements.resultsNext.addEventListener("click", async () => {
+      if (state.resultsPage >= state.resultsTotalPages) return;
+      state.resultsPage += 1;
+      await loadResults();
+    });
+  }
+
+  if (elements.backToList) {
+    elements.backToList.addEventListener("click", async () => {
+      await loadChat();
+      if (hasActiveFilters()) {
+        await loadResults();
+      }
+    });
+  }
+
+  if (elements.closeResults) {
+    elements.closeResults.addEventListener("click", closeResultsPanel);
+  }
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -500,11 +636,20 @@ function bindEvents() {
 async function bootstrap() {
   bindEvents();
   await loadMeta();
-  await loadMessages();
-  await loadSearchResults();
+  await loadChat();
+  await loadResults();
+  renderActiveFilters();
 }
 
 bootstrap().catch((error) => {
   console.error(error);
-  elements.messages.innerHTML = `<div class="empty-state">erro ao carregar a interface.</div>`;
+
+  if (elements.messages) {
+    elements.messages.innerHTML = `
+      <div class="empty-state">
+        erro ao carregar a interface.<br />
+        <small>${escapeHtml(error.message || "erro desconhecido")}</small>
+      </div>
+    `;
+  }
 });
