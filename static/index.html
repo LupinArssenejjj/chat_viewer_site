@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Kyodo Chat Viewer</title>
-    <link rel="stylesheet" href="/static/styles.css?v=3" />
+    <title>Chat Viewer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <div class="app">
       <header class="topbar">
         <div class="topbar-left">
-          <span class="channel-mark">#</span>
+          <div class="channel-mark">#</div>
           <div>
             <h1 id="chat-title">carregando...</h1>
             <p id="chat-subtitle">carregando...</p>
@@ -34,48 +34,55 @@
 
       <section id="context-banner" class="context-banner hidden">
         <div>
-          <strong>mensagem localizada</strong>
+          <strong>modo jump</strong>
           <span id="context-text"></span>
         </div>
-        <button id="back-to-list" class="small-button" type="button">voltar ao início</button>
+        <button id="back-to-list" class="small-button" type="button">voltar</button>
       </section>
 
       <section id="active-filters" class="active-filters"></section>
 
-      <main class="layout">
-        <section class="chat-column">
+      <main class="chat-layout">
+        <section class="chat-panel">
           <div id="messages" class="message-list"></div>
 
           <nav id="pagination" class="pagination">
             <button id="prev-page" class="small-button" type="button">anterior</button>
-            <span id="page-status">página 1</span>
+            <span id="page-status">página 1 de 1</span>
             <button id="next-page" class="small-button" type="button">próxima</button>
           </nav>
         </section>
 
-        <aside id="results-panel" class="results-panel hidden">
+        <aside id="results-panel" class="results-panel hidden" aria-label="Resultados dos filtros">
           <div class="results-head">
-            <div>
+            <div class="results-head-text">
               <h2>resultados</h2>
-              <p id="results-subtitle">0 mensagens</p>
+              <span id="results-count">0 mensagens</span>
             </div>
+
             <button id="close-results" class="small-button" type="button">fechar</button>
           </div>
 
-          <div id="results-list" class="results-list"></div>
+          <div id="results-list" class="results-list">
+            <div class="empty-state">
+              escolha um usuário ou digite um texto para ver os resultados aqui.
+            </div>
+          </div>
 
-          <nav id="results-pagination" class="pagination results-pagination hidden">
+          <div class="results-pagination">
             <button id="results-prev" class="small-button" type="button">anterior</button>
-            <span id="results-page-status">página 1</span>
+            <span id="results-page-status">página 1 de 1</span>
             <button id="results-next" class="small-button" type="button">próxima</button>
-          </nav>
+          </div>
         </aside>
       </main>
 
       <aside id="filters-panel" class="filters-panel hidden" aria-hidden="true">
         <div class="filters-head">
           <h2>filtros</h2>
-          <button id="close-filters" class="icon-button" type="button">x</button>
+          <button id="close-filters" class="icon-button" type="button" aria-label="Fechar filtros">
+            x
+          </button>
         </div>
 
         <div class="field">
@@ -101,7 +108,7 @@
         </div>
       </aside>
 
-      <script src="/static/app.js?v=3"></script>
+      <script src="/static/app.js"></script>
     </div>
   </body>
 </html>
