@@ -11,6 +11,12 @@ const state = {
   selectedAuthor: "",
   textQuery: "",
   mode: "list",
+
+  meta: {
+    totalText: "0 mensagens",
+    authorsText: "0 usuários",
+    rangeText: "-",
+  },
 };
 
 const elements = {
@@ -120,6 +126,31 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function scrollPageTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function scrollResultsTop() {
+  if (elements.resultsList) {
+    elements.resultsList.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  scrollPageTop();
+}
+
+function restoreMetaSummary() {
+  if (elements.summaryTotal) {
+    elements.summaryTotal.textContent = state.meta.totalText;
+  }
+
+  if (elements.summaryAuthors) {
+    elements.summaryAuthors.textContent = state.meta.authorsText;
+  }
+
+  if (elements.summaryRange) {
+    elements.summaryRange.textContent = state.meta.rangeText;
+  }
+}
+
 function resetAuthorPicker() {
   if (elements.authorInput) elements.authorInput.value = "";
   if (elements.selectedAuthor) elements.selectedAuthor.value = "";
@@ -132,7 +163,7 @@ function openFilters() {
   resetAuthorPicker();
 
   if (elements.textInput) {
-    elements.textInput.value = state.textQuery || "";
+    elements.textInput.value = "";
   }
 
   elements.filtersPanel.classList.remove("hidden");
@@ -140,7 +171,7 @@ function openFilters() {
   loadAuthorSuggestions("");
 }
 
-function closeFilters() {
+function closeFiltersUi() {
   if (!elements.filtersPanel) return;
   elements.filtersPanel.classList.add("hidden");
   elements.filtersPanel.setAttribute("aria-hidden", "true");
@@ -151,7 +182,7 @@ function openResults() {
   elements.resultsPanel.classList.remove("hidden");
 }
 
-function closeResultsPanel() {
+function closeResultsPanelUi() {
   if (!elements.resultsPanel) return;
   elements.resultsPanel.classList.add("hidden");
 }
@@ -306,7 +337,7 @@ function renderResults(items, total, page, totalPages) {
         escolha um usuário ou digite um texto para ver os resultados aqui.
       </div>
     `;
-    closeResultsPanel();
+    closeResultsPanelUi();
     return;
   }
 
@@ -367,6 +398,7 @@ function bindMessageActions() {
       state.textQuery = "";
       renderActiveFilters();
       await loadResults();
+      scrollResultsTop();
     });
   }
 }
@@ -416,17 +448,11 @@ async function loadMeta() {
       : `exportado em ${data.exported_at || "-"}`;
   }
 
-  if (elements.summaryTotal) {
-    elements.summaryTotal.textContent = `${Number(data.total_messages || 0).toLocaleString("pt-BR")} mensagens`;
-  }
+  state.meta.totalText = `${Number(data.total_messages || 0).toLocaleString("pt-BR")} mensagens`;
+  state.meta.authorsText = `${Number(data.total_authors || 0).toLocaleString("pt-BR")} usuários`;
+  state.meta.rangeText = formatPeriod(data.first_message_at, data.last_message_at);
 
-  if (elements.summaryAuthors) {
-    elements.summaryAuthors.textContent = `${Number(data.total_authors || 0).toLocaleString("pt-BR")} usuários`;
-  }
-
-  if (elements.summaryRange) {
-    elements.summaryRange.textContent = formatPeriod(data.first_message_at, data.last_message_at);
-  }
+  restoreMetaSummary();
 }
 
 async function loadChat() {
@@ -440,11 +466,13 @@ async function loadChat() {
   const data = await fetchJson(`/api/messages?${query}`);
   renderMessages(data.items || []);
   updateChatPagination(data.page || 1, data.total_pages || 1);
+  restoreMetaSummary();
 }
 
 async function loadResults() {
   if (!hasActiveFilters()) {
     renderResults([], 0, 1, 1);
+    restoreMetaSummary();
     return;
   }
 
@@ -533,6 +561,17 @@ function clearFiltersState() {
   if (elements.textInput) elements.textInput.value = "";
 }
 
+async function clearFilterSession() {
+  clearFiltersState();
+  renderActiveFilters();
+  renderResults([], 0, 1, 1);
+  closeResultsPanelUi();
+  closeFiltersUi();
+  state.chatPage = 1;
+  await loadChat();
+  scrollPageTop();
+}
+
 function bindEvents() {
   if (elements.openFilters) {
     elements.openFilters.addEventListener("click", () => {
@@ -541,7 +580,9 @@ function bindEvents() {
   }
 
   if (elements.closeFilters) {
-    elements.closeFilters.addEventListener("click", closeFilters);
+    elements.closeFilters.addEventListener("click", async () => {
+      await clearFilterSession();
+    });
   }
 
   if (elements.authorInput) {
@@ -572,7 +613,8 @@ function bindEvents() {
       await loadResults();
 
       resetAuthorPicker();
-      closeFilters();
+      closeFiltersUi();
+      scrollResultsTop();
     });
   }
 
@@ -586,17 +628,14 @@ function bindEvents() {
       await loadResults();
 
       resetAuthorPicker();
-      closeFilters();
+      closeFiltersUi();
+      scrollResultsTop();
     });
   }
 
   if (elements.clearFilters) {
     elements.clearFilters.addEventListener("click", async () => {
-      clearFiltersState();
-      renderActiveFilters();
-      renderResults([], 0, 1, 1);
-      await loadAuthorSuggestions("");
-      closeResultsPanel();
+      await clearFilterSession();
     });
   }
 
@@ -605,7 +644,7 @@ function bindEvents() {
       if (state.chatPage <= 1) return;
       state.chatPage -= 1;
       await loadChat();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollPageTop();
     });
   }
 
@@ -614,7 +653,7 @@ function bindEvents() {
       if (state.chatPage >= state.chatTotalPages) return;
       state.chatPage += 1;
       await loadChat();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollPageTop();
     });
   }
 
@@ -623,6 +662,7 @@ function bindEvents() {
       if (state.resultsPage <= 1) return;
       state.resultsPage -= 1;
       await loadResults();
+      scrollResultsTop();
     });
   }
 
@@ -631,25 +671,27 @@ function bindEvents() {
       if (state.resultsPage >= state.resultsTotalPages) return;
       state.resultsPage += 1;
       await loadResults();
+      scrollResultsTop();
     });
   }
 
   if (elements.backToList) {
     elements.backToList.addEventListener("click", async () => {
+      state.chatPage = 1;
       await loadChat();
-      if (hasActiveFilters()) {
-        await loadResults();
-      }
+      scrollPageTop();
     });
   }
 
   if (elements.closeResults) {
-    elements.closeResults.addEventListener("click", closeResultsPanel);
+    elements.closeResults.addEventListener("click", async () => {
+      await clearFilterSession();
+    });
   }
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeFilters();
+  document.addEventListener("keydown", async (event) => {
+    if (event.key === "Escape" && elements.filtersPanel && !elements.filtersPanel.classList.contains("hidden")) {
+      await clearFilterSession();
     }
   });
 }
